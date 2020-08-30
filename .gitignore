@@ -1,0 +1,6 @@
+_build
+*.csv
+*.pyc
+/.vs/
+*.pdf
+*.db
