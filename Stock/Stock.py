@@ -27,6 +27,9 @@ class g:
 
 today=GetToday()
 startDay='20200101'
+
+#启动参数
+bAppMode=True
 #StockBasic=GetStockBasic()
 
 #def GetStockHistory(df,code):
@@ -212,12 +215,23 @@ if __name__ == '__main__':
     #LoadDBData()
     #adj=LoadTable("AdjFactor")
     #s=GetAdjChangeList(adj)
-    app = QApplication(sys.argv)
-    ex = Example()
-    sys.exit(app.exec_())
-
-
-    #track=LoadTable('Track')
+    if bAppMode:
+        app = QApplication(sys.argv)
+        ex = Example()
+        sys.exit(app.exec_())
+    else:
+        LoadDBData()
+        g.track=Track1()
+        g.track.Init()
+        trackData=LoadTable('Track')
+        df=g.df
+        endDay=g.CurTradeDay
+        ActiveStocks=df[df.trade_date==endDay][df.amount*1000>300000000]['ts_code'].tolist()
+        print("活跃股数",endDay,len(ActiveStocks))
+        ma=LoadMa()
+        masByCode=SeperateAllDf(ma,g.StockBasic)
+        DfsByCode=SeperateAllDf(g.df,g.StockBasic)
+        RunTrackMT(g.track,ActiveStocks,DfsByCode,masByCode,db)
     #
     #stockList=StockBasic['ts_code'].tolist()
     #code='002475.SZ'

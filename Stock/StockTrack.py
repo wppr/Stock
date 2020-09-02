@@ -14,7 +14,7 @@ dayState=1 #当前 新进入， 退出  0 undefine 1 上穿  2 上涨趋势 3 �
 #avg zf
 #zf
 #amount
-
+bIgonreNewStocks=True
 def GetState(n):
     if n==2:
         return '上涨'
@@ -130,7 +130,7 @@ class Track1():
             index=self.stockToIndex[code]
             self.dfList[index]=b
             self.dfFlag[index]=True
-        print('Process end ',code,index,"/",len(self.dfList)-1,'线程',threading.current_thread().ident)
+        print('Process end   ',code,index,"/",len(self.dfList)-1,'线程',threading.current_thread().ident)
 
 def RemoveListValue(list_i,value):
     j=0
@@ -144,6 +144,9 @@ def RunTrack(t,stocks,DfsByCode,masByCode,db):
     t.SetStocks(stocks)
     for key in stocks:
         if (key in DfsByCode) and( key in masByCode):
+            if bIgonreNewStocks and DfsByCode[key].shape[0]<30:
+                print('新股剔除 ',key)
+                continue
             if DfsByCode[key].shape[0]==masByCode[key].shape[0]:
                 t.Process(key,DfsByCode[key],masByCode[key])
             else:
@@ -159,22 +162,32 @@ def RunTrack(t,stocks,DfsByCode,masByCode,db):
     newMa=pd.concat(newList)
     newMa.to_sql('Track', db, index=False, if_exists='replace', chunksize=1000)
     print("Write Track End")
-
-def SubRunTrack(t,stocks,start,end,DfsByCode,masByCode,db):
+def GetRanges(start,end,step):
+    r=[]
+    while start<end:
+        if start+step-1>=end:
+            r.append([start,end])
+            break
+        else:
+            r.append([start,start+step-1])
+            start=start+step
+    return r
+def SubRunTrack(t,stocks,start,end,DfsByCode,masByCode):
     for i in range(start,end+1):
         key=stocks[i]
         t.Process(key,DfsByCode[key],masByCode[key])
 
 def RunTrackMT(t,stocks,DfsByCode,masByCode,db):
     t.SetStocks(stocks)
-    r=GetRanges(0,len(stocks)-1,100)
+    r=GetRanges(0,len(stocks)-1,300)
     ths=[]
     for x in r:
-        th = threading.Thread(target=SubRunTrack,args=(t,stocks,x[0],x[1],DfsByCode,masByCode,))
+        th = threading.Thread(target=SubRunTrack,args=(t,stocks,x[0],x[1],DfsByCode,masByCode))
         ths.append(th)
     for th in ths:
         th.start()
     for th in ths:
         th.join()
-    Mas=pd.concat(t.dfList)
-    Mas.to_sql('Track', db, index=False, if_exists='replace', chunksize=1000)
+    print("run track mt end")
+    #Mas=pd.concat(t.dfList)
+    #Mas.to_sql('Track', db, index=False, if_exists='replace', chunksize=1000)
