@@ -12,9 +12,7 @@ from StockUtil import *
 import threading
 import os
 import sys
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import QDate
+
 #定义全局变量
 class g:
     track=1
@@ -24,12 +22,12 @@ class g:
     Sepdfs=1
     AdjFactor=1
     CurTradeDay=1
-
+    ma=1
 today=GetToday()
 startDay='20200101'
 
 #启动参数
-bAppMode=True
+bAppMode=False
 #StockBasic=GetStockBasic()
 
 #def GetStockHistory(df,code):
@@ -90,7 +88,7 @@ def DailyUpdate(df):
         print("Update Trade Data")
         UpdateStockBasic()
         UpdateTradeDays()
-        os._exit(0)
+        #os._exit(0)
     else:
         print('Already Update')
 
@@ -131,6 +129,7 @@ def LoadDBData():
     g.tradedays=GetTradeDaysFromDB()
     
     g.df=LoadDailyData()
+    g.ma=LoadMa()
     g.CurTradeDay=GetLastTradeDay(today,g.tradedays)
     g.trackData=LoadTable('Track')
     print("End")
@@ -149,65 +148,14 @@ def UpdateTrack(df,StockBasic,db):
     DfsByCode=SeperateAllDf(df,StockBasic)
     RunTrack(g.track,stocks,DfsByCode,masByCode,db)
 
-def UpdateFuQuan(df):
-    adj=GetAdjRange('20200720','20200826')
+def UpdateFuQuan(df,startDay,endDay):
+    adj=GetAdjRange(startDay,endDay)
     #adj=LoadTable("AdjFactor")
     stocks=GetAdjChangeList(adj)
     print("更新复权 ",len(stocks))
     df=UpdateStocks(stocks,df,'20200101',today)
     SaveTradeData(df)
-class Example(QWidget):
-    
-    def __init__(self):
-        super().__init__()
-        
-        self.initUI()
-        g.track=Track1()
-        g.track.Init()
 
-    def initUI(self):      
-
-        self.resize(400,600)
-        self.setWindowTitle('股票追踪')
-        layout=QVBoxLayout()
-
-        b1 = QPushButton('加载数据', self)
-        #b1.move(10, 10)
-        b1.clicked[bool].connect(lambda:LoadDBData())
-        layout.addWidget(b1)
-       
-        b2 = QPushButton('日常更新', self)
-        #b2.move(10, 60)
-        b2.clicked[bool].connect(lambda:DailyUpdate(g.df))
-        layout.addWidget(b2)
-
-        b6 = QPushButton('更新复权', self)
-        b6.clicked[bool].connect(lambda:UpdateFuQuan(g.df))
-        layout.addWidget(b6)
-
-        b3 = QPushButton('计算均线', self)
-        #b3.move(10, 110)
-        b3.clicked[bool].connect(lambda:CalcMeans(g.df))
-        layout.addWidget(b3)
-
-        b4 = QPushButton('更新追踪池', self)
-        #b4.move(10, 160)
-        b4.clicked[bool].connect(lambda:UpdateTrack(g.df,g.StockBasic,db))
-        layout.addWidget(b4)
-
-        b5 = QPushButton('生成报告', self)
-        #b5.move(10, 200)
-        b5.clicked[bool].connect(lambda:DoReport(g.trackData,g.df,self.d1.toPlainText(),g.StockBasic))
-        layout.addWidget(b5)
-
-        #b = QPushButton('更新复权', self)
-        self.d1=QTextEdit()
-        self.d1.setPlainText(today)
-        #self.setGeometry(300, 300, 280, 170)
-        layout.addWidget(self.d1)
-        self.setLayout(layout)
-        
-        self.show()
         
 
 if __name__ == '__main__':
@@ -215,11 +163,11 @@ if __name__ == '__main__':
     #LoadDBData()
     #adj=LoadTable("AdjFactor")
     #s=GetAdjChangeList(adj)
-    if bAppMode:
-        app = QApplication(sys.argv)
-        ex = Example()
-        sys.exit(app.exec_())
-    else:
+    if not bAppMode:
+    #     app = QApplication(sys.argv)
+    #     ex = Example()
+    #     sys.exit(app.exec_())
+    #else:
         LoadDBData()
         g.track=Track1()
         g.track.Init()
@@ -231,7 +179,7 @@ if __name__ == '__main__':
         ma=LoadMa()
         masByCode=SeperateAllDf(ma,g.StockBasic)
         DfsByCode=SeperateAllDf(g.df,g.StockBasic)
-        RunTrackMT(g.track,ActiveStocks,DfsByCode,masByCode,db)
+        RunTrack(g.track,ActiveStocks,DfsByCode,masByCode,db)
     #
     #stockList=StockBasic['ts_code'].tolist()
     #code='002475.SZ'

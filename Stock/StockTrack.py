@@ -5,7 +5,7 @@ import tushare as ts
 import time
 import datetime
 import threading
-
+import multiprocessing as mp
 dayState=1 #当前 新进入， 退出  0 undefine 1 上穿  2 上涨趋势 3 下穿 4.没上涨
 # 进入 每天 信息 
 #StartDay
@@ -25,7 +25,7 @@ def GetState(n):
     else:
         return '未知'
 
-#趋势股追踪器
+#趋势追踪器
 class Track1():
     def Init(self):
         self.dfList=[]
@@ -131,6 +131,77 @@ class Track1():
             self.dfList[index]=b
             self.dfFlag[index]=True
         print('Process end   ',code,index,"/",len(self.dfList)-1,'线程',threading.current_thread().ident)
+    def Process2(self,code,df,maT):
+        #输入一个股的历史记录。计算出其进入上升日期，持续日期，离开日期
+        a=df.sort_values(by=['trade_date'],ascending=True )
+        b=maT.sort_values(by=['trade_date'],ascending=True )
+        print('Process Start ',code)
+        df=pd.merge(a,b,on=['trade_date','ts_code','close'])
+        #print(code,a.shape[0])
+        assert a.shape[0]==b.shape[0]
+        df['ma5_lag']=df.sort_values('trade_date').groupby('ts_code')['Ma5'].shift(1).fillna('bfill')
+        df['ma14_lag']=df.sort_values('trade_date').groupby('ts_code')['Ma14'].shift(1).fillna('bfill')
+        #df.apply(lambda x: func(x['ma'], ...), axis=1)
+        b['state']=0
+        b['startDay']=''
+        b['startPrice']=0.0
+        b['countDay']=0
+        b['countZF']=0.0
+        b['avgZF']=0.0
+        b['alertCount']=0
+        state=0
+        startDay=''
+        startPrice=0 
+        startIndex=0
+        alertCount=0
+       
+        for i in range(a.shape[0]):
+            ma=b.iloc[i]
+            row=a.iloc[i]
+            if i>=1:
+                row0=a.iloc[i-1]
+                ma0=b.iloc[i-1]
+                if (state==0 or state==4):
+                    if self.InPoolCond(row,row0,ma,ma0):
+                        state=1
+                        startDay=row['trade_date']
+                        startPrice=row['close']
+                        startIndex=i
+                        alertCount=0
+                elif(state==1 or state==2):
+                    if self.OutPoolCond(row,ma):
+                        state=3
+                        startDay=0
+                        startPrice=0
+                        startIndex=0
+                    else:
+                        state=2
+                    if self.AlertCond(row,ma):
+                        alertCount=alertCount+1
+                elif (state==3 or state==4):
+                    if state==3 and (not self.InPoolCond(row,row0,ma,ma0)):
+                        state=4
+
+      #  Index(['ts_code', 'trade_date', 'close', 'Ma5', 'Ma14', 'state', 'startDay',
+      # 'startPrice', 'countDay', 'countZF', 'avgZF', 'alertCount'],
+      #dtype='object')
+                b.iloc[i,5]=state
+                if(state==2 or state==1 or state==3):
+                    b.iloc[i,6]=startDay
+                if(state==2):
+                    b.iloc[i,7]=startPrice
+                    b.iloc[i,8]=i-startIndex #countZF
+                    countzf=round(row['close']/startPrice-1,3)*100
+                    b.iloc[i,9]=countzf
+                    b.iloc[i,10]=round(countzf/(i-startIndex),2)
+                    b.iloc[i,11]=alertCount
+                #print(row['trade_date'],state,round(ma['Ma5'],2),round(ma['Ma14'],2),b.iloc[i,9])
+                #print(b.iloc[i])
+        if code in self.stockToIndex:
+            index=self.stockToIndex[code]
+            self.dfList[index]=b
+            self.dfFlag[index]=True
+        print('Process end   ',code,index,"/",len(self.dfList)-1,'线程',threading.current_thread().ident)
 
 def RemoveListValue(list_i,value):
     j=0
@@ -148,7 +219,7 @@ def RunTrack(t,stocks,DfsByCode,masByCode,db):
                 print('新股剔除 ',key)
                 continue
             if DfsByCode[key].shape[0]==masByCode[key].shape[0]:
-                t.Process(key,DfsByCode[key],masByCode[key])
+                t.Process2(key,DfsByCode[key],masByCode[key])
             else:
                 print('error not equal',key)
         else:
@@ -188,6 +259,23 @@ def RunTrackMT(t,stocks,DfsByCode,masByCode,db):
         th.start()
     for th in ths:
         th.join()
+    print("run track mt end")
+def RunTrackMP(t,stocks,DfsByCode,masByCode,db):
+    t.SetStocks(stocks)
+    r=GetRanges(0,len(stocks)-1,10)
+    pool = mp.Pool(processes = (mp.cpu_count() - 1))
+    args=[]
+    for x in r:
+        args.append((t,stocks,x[0],x[1],DfsByCode,masByCode))
+    answer = pool.map(SubRunTrack,args)
+    pool.close()
+    pool.join()
+    print("run track mp end")
+    ths=[]
+    for x in r:
+        th = threading.Thread(target=SubRunTrack,args=(t,stocks,x[0],x[1],DfsByCode,masByCode))
+        ths.append(th)
+
     print("run track mt end")
     #Mas=pd.concat(t.dfList)
     #Mas.to_sql('Track', db, index=False, if_exists='replace', chunksize=1000)
